@@ -38,14 +38,17 @@ def search_news_with_retry(client: OpenAI, max_retries: int = 3) -> Dict[str, An
             # Use the responses API with web_search_preview tool (correct syntax)
             response = client.responses.create(
                 model="gpt-5-nano",
-                tools=[{"type": "web_search_preview"}],
-                input="Find 5 positive news article URLs from today in Norway. Return the URLs in a numbered list.",
-                user_location={
-                    "type": "approximate",
-                    "country": "NO",
-                    "city": "Trondheim",
-                    "region": "Trondheim"
-                }
+                tools=[{
+                    "type": "web_search_preview",
+                    "user_location": {
+                        "type": "approximate",
+                        "country": "NO",
+                        "city": "Trondheim",
+                        "region": "Trondheim"
+                    },
+                    "timezone": "Europe/Oslo"
+                }],
+                input="Find 5 positive news article URLs from today in Norway. Return the URLs in a numbered list."
             )
             
             # Get the output text from the response
