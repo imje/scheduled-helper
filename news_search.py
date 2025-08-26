@@ -5,54 +5,148 @@ Hourly news search script using OpenAI API to find news article URLs.
 
 import os
 import json
-import requests
+import logging
+import re
 from datetime import datetime
+from typing import List, Dict, Any
 from openai import OpenAI
+import time
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+def validate_urls(urls: List[str]) -> List[str]:
+    """Basic URL validation"""
+    valid_urls = []
+    for url in urls:
+        url = url.strip()
+        if url.startswith(('http://', 'https://')) and len(url) > 10:
+            valid_urls.append(url)
+    return valid_urls
+
+def search_news_with_retry(client: OpenAI, max_retries: int = 3) -> Dict[str, Any]:
+    """Search for news with retry logic using responses API and web_search_preview tool"""
+    
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"Attempting news search (attempt {attempt + 1}/{max_retries})")
+            
+            # Use the responses API with web_search_preview tool (correct syntax)
+            response = client.responses.create(
+                model="gpt-5-nano",
+                tools=[{"type": "web_search_preview"}],
+                input="Find 5 positive news article URLs from today in Norway. Return the URLs in a numbered list.",
+                user_location={
+                    "type": "approximate",
+                    "country": "NO",
+                    "city": "Trondheim",
+                    "region": "Trondheim"
+                }
+            )
+            
+            # Get the output text from the response
+            content = response.output_text
+            logger.info(f"Response received: {content[:200]}...")
+            
+            # Extract URLs from the response text
+            lines = content.split('\n')
+            news_urls = []
+            
+            for line in lines:
+                line = line.strip()
+                # Look for URLs in the line
+                if 'http' in line:
+                    # Extract URLs from the line
+                    urls_in_line = re.findall(r'https?://[^\s<>"{}|\\^`[\]]+', line)
+                    news_urls.extend(urls_in_line)
+            
+            # Validate URLs
+            valid_urls = validate_urls(news_urls)
+            
+            # If we still don't have enough valid URLs, try parsing differently
+            if len(valid_urls) < 3:
+                logger.warning(f"Only found {len(valid_urls)} valid URLs, trying alternative parsing")
+                # Try to extract any URLs that might be formatted differently
+                all_urls = re.findall(r'https?://[^\s<>"{}|\\^`[\]]+', content)
+                valid_urls = validate_urls(all_urls)
+            
+            # Only return what we actually found from web search
+            if len(valid_urls) == 0:
+                raise ValueError("No valid URLs found in web search results")
+            
+            return {
+                "urls": valid_urls[:5],
+                "raw_response": content,
+                "usage": getattr(response, 'usage', None)
+            }
+            
+        except Exception as e:
+            logger.warning(f"Attempt {attempt + 1} failed: {e}")
+            if attempt < max_retries - 1:
+                wait_time = 2 ** attempt  # Exponential backoff
+                logger.info(f"Waiting {wait_time} seconds before retry...")
+                time.sleep(wait_time)
+            else:
+                # All attempts failed - raise the error
+                logger.error("All attempts to search for news failed")
+                raise
 
 def main():
-    api_key = os.getenv('OPENAI_API_KEY')
-    if not api_key:
-        raise ValueError("OPENAI_API_KEY environment variable is required")
-    
-    client = OpenAI(api_key=api_key)
-    
+    """Main function to search for news and save results"""
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",  # Using available model instead of gpt-5-nano
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are a helpful assistant that searches for current news articles. Provide exactly 5 recent news article URLs from reputable sources."
-                },
-                {
-                    "role": "user",
-                    "content": "Please find 5 current news article URLs from the past 24 hours. Return them as a simple list, one URL per line."
-                }
-            ],
-            max_tokens=500,
-            temperature=0.3
-        )
+        api_key = os.getenv('OPENAI_API_KEY')
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY environment variable is required")
         
-        news_urls = response.choices[0].message.content.strip().split('\n')
-        news_urls = [url.strip() for url in news_urls if url.strip()]
+        logger.info("Starting news search...")
+        client = OpenAI(api_key=api_key)
+        
+        # Search for news with retry
+        search_result = search_news_with_retry(client)
         
         timestamp = datetime.now().isoformat()
         result = {
             "timestamp": timestamp,
-            "news_urls": news_urls[:5],  # Ensure exactly 5 URLs
-            "model_used": "gpt-4o-mini"
+            "news_urls": search_result["urls"],
+            "model_used": "gpt-5-nano",
+            "url_count": len(search_result["urls"]),
+            "usage": search_result.get("usage"),
+            "status": "success"
         }
         
-        print(f"Found {len(result['news_urls'])} news URLs at {timestamp}")
+        logger.info(f"Found {len(result['news_urls'])} news URLs at {timestamp}")
         for i, url in enumerate(result['news_urls'], 1):
-            print(f"{i}. {url}")
+            logger.info(f"{i}. {url}")
             
         # Save results to file
-        with open('news_results.json', 'w') as f:
+        output_file = f"news_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        with open(output_file, 'w') as f:
+            json.dump(result, f, indent=2)
+        
+        # Also save latest results
+        with open('news_results_latest.json', 'w') as f:
             json.dump(result, f, indent=2)
             
+        logger.info(f"Results saved to {output_file} and news_results_latest.json")
+        
     except Exception as e:
-        print(f"Error occurred: {e}")
+        logger.error(f"Fatal error: {e}")
+        
+        # Save error information
+        error_result = {
+            "timestamp": datetime.now().isoformat(),
+            "status": "error",
+            "error": str(e),
+            "model_used": "gpt-5-nano"
+        }
+        
+        with open('news_results_latest.json', 'w') as f:
+            json.dump(error_result, f, indent=2)
+            
         raise
 
 if __name__ == "__main__":
