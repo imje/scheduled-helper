@@ -89,10 +89,15 @@ def search_news_with_retry(client: OpenAI, max_retries: int = 3) -> Dict[str, An
             if len(valid_urls) == 0:
                 raise ValueError("No valid URLs found in web search results")
 
+            # Convert usage to dict if it exists
+            usage_data = None
+            if hasattr(response, "usage") and response.usage:
+                usage_data = response.usage.model_dump() if hasattr(response.usage, "model_dump") else response.usage._asdict()
+            
             return {
                 "urls": valid_urls[:1],  # Only return 1 URL
                 "raw_response": content,
-                "usage": getattr(response, "usage", None),
+                "usage": usage_data,
             }
 
         except Exception as e:
