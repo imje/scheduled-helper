@@ -47,7 +47,7 @@ def search_news_with_retry(client: OpenAI, max_retries: int = 3) -> Dict[str, An
                         "region": "Trondheim"
                     }
                 }],
-                input="Find 5 positive news article URLs from today in Norway. Return the URLs in a numbered list."
+                input="Find 1 positive news article URL from today in Norway. Return just the URL."
             )
             
             # Get the output text from the response
@@ -69,8 +69,8 @@ def search_news_with_retry(client: OpenAI, max_retries: int = 3) -> Dict[str, An
             # Validate URLs
             valid_urls = validate_urls(news_urls)
             
-            # If we still don't have enough valid URLs, try parsing differently
-            if len(valid_urls) < 3:
+            # If we still don't have valid URLs, try parsing differently
+            if len(valid_urls) == 0:
                 logger.warning(f"Only found {len(valid_urls)} valid URLs, trying alternative parsing")
                 # Try to extract any URLs that might be formatted differently
                 all_urls = re.findall(r'https?://[^\s<>"{}|\\^`[\]]+', content)
@@ -81,7 +81,7 @@ def search_news_with_retry(client: OpenAI, max_retries: int = 3) -> Dict[str, An
                 raise ValueError("No valid URLs found in web search results")
             
             return {
-                "urls": valid_urls[:5],
+                "urls": valid_urls[:1],  # Only return 1 URL
                 "raw_response": content,
                 "usage": getattr(response, 'usage', None)
             }
