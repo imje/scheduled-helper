@@ -45,8 +45,7 @@ def search_news_with_retry(client: OpenAI, max_retries: int = 3) -> Dict[str, An
                         "country": "NO",
                         "city": "Trondheim",
                         "region": "Trondheim"
-                    },
-                    "timezone": "Europe/Oslo"
+                    }
                 }],
                 input="Find 5 positive news article URLs from today in Norway. Return the URLs in a numbered list."
             )
