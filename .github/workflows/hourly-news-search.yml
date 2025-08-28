@@ -1,9 +1,9 @@
 name: Hourly News Search
 
 on:
-  schedule:
-    - cron: '*/15 * * * *'  # Run every 15 minutes
-  workflow_dispatch:  # Allow manual triggering
+  # schedule:
+  #   - cron: '*/15 * * * *'  # Run every 15 minutes
+  workflow_dispatch:  # Keep manual triggering available
     inputs:
       debug:
         description: 'Enable debug logging'
